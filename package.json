@@ -1,0 +1,23 @@
+{
+  "name": "hyorin-farm-defense",
+  "version": "1.0.0",
+  "private": true,
+  "description": "효린이의 농장 지키기 — 오프라인 플레이가 가능한 레트로 농장 방어 게임",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "fflate": "^0.8.2",
+    "phaser": "^3.90.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "vite": "^7.1.9",
+    "vitest": "^3.2.4"
+  }
+}
