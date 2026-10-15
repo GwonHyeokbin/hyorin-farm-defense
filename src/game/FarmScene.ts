@@ -81,14 +81,16 @@ export class FarmScene extends Phaser.Scene {
     this.bars = this.add.graphics().setDepth(900);
     this.pauseKey = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-      if (pointer.leftButtonDown() && this.state && !this.paused) {
+      if ((pointer.wasTouch || pointer.leftButtonDown()) && this.state && !this.paused) {
         this.pointerAttack = true;
         this.updatePointerTarget(pointer);
       }
     });
     this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => this.updatePointerTarget(pointer));
     this.input.on('pointerup', () => { this.pointerAttack = false; });
+    this.input.on('pointerupoutside', () => { this.pointerAttack = false; });
     this.input.on('gameout', () => { this.pointerAttack = false; });
+    this.game.canvas.addEventListener('pointercancel', () => { this.pointerAttack = false; }, { passive: true });
     this.callbacks.onReady();
   }
 
@@ -132,6 +134,10 @@ export class FarmScene extends Phaser.Scene {
   setTouchDirection(direction: 'up' | 'down' | 'left' | 'right', active: boolean): void {
     if (active) this.touchDirections.add(direction);
     else this.touchDirections.delete(direction);
+  }
+
+  releaseTouchDirections(): void {
+    this.touchDirections.clear();
   }
 
   setTouchAttack(active: boolean): void {

@@ -9,6 +9,7 @@ import type { GameSettings } from './game/storage';
 import { BOULDER_UPGRADE_COST, UPGRADE_DEFINITIONS, upgradeCost } from './game/upgrades';
 import { AMMO_DEFINITIONS, isAmmoType } from './game/ammo';
 import { PET_DEFINITIONS, isPetType } from './game/pets';
+import { requestLandscapeLock, shouldCollapseLandscapeAmmoPanel, shouldUseTouchLayout, toggleFullscreen } from './game/mobile-layout';
 import type { EngineEvent, GameState, PetType, UpgradeKey } from './game/types';
 
 type View = 'home' | 'game' | 'pause' | 'intermission' | 'gameover';
@@ -25,6 +26,7 @@ export class GameApp {
   private readonly settings: GameSettings;
   private readonly audio: AudioKit;
   private readonly scene: FarmScene;
+  private game: Phaser.Game | null = null;
   private sceneReady = false;
   private pendingStart: GameState | null | undefined;
   private currentView: View = 'home';
@@ -47,7 +49,13 @@ export class GameApp {
     };
     this.scene = new FarmScene(callbacks);
     this.root.innerHTML = this.shellMarkup();
-    new Phaser.Game({
+    this.updateTouchLayout();
+    window.addEventListener('resize', this.updateTouchLayout, { passive: true });
+    window.addEventListener('orientationchange', this.updateTouchLayout, { passive: true });
+    window.visualViewport?.addEventListener('resize', this.updateTouchLayout, { passive: true });
+    window.screen.orientation?.addEventListener('change', this.updateTouchLayout);
+    document.addEventListener('fullscreenchange', this.updateTouchLayout);
+    this.game = new Phaser.Game({
       type: Phaser.AUTO,
       width: 1024,
       height: 640,
@@ -68,6 +76,32 @@ export class GameApp {
 
   private readonly handleVisibilityChange = (): void => {
     if (document.hidden && this.currentView === 'game') this.scene.pauseRun();
+  };
+
+  private readonly updateTouchLayout = (): void => {
+    const mobileUserAgent = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    const coarsePointer = window.matchMedia('(pointer: coarse), (any-pointer: coarse)').matches;
+    const touchLayout = shouldUseTouchLayout({
+      viewportWidth: window.innerWidth,
+      screenWidth: window.screen.width,
+      screenHeight: window.screen.height,
+      maxTouchPoints: navigator.maxTouchPoints,
+      coarsePointer,
+      mobileUserAgent,
+    });
+    const landscape = window.innerWidth > window.innerHeight;
+    const compactLandscape = shouldCollapseLandscapeAmmoPanel({ landscape, viewportWidth: window.innerWidth, screenWidth: window.screen.width });
+    this.root.classList.toggle('touch-device', touchLayout);
+    this.root.classList.toggle('touch-landscape', touchLayout && landscape);
+    this.root.classList.toggle('compact-landscape', touchLayout && compactLandscape);
+    if (!touchLayout || !compactLandscape) this.root.querySelector<HTMLElement>('#game-view')?.classList.remove('ammo-panel-open');
+    if (touchLayout && landscape) {
+      this.scene.releaseTouchDirections();
+      this.root.querySelectorAll('.dpad .is-pressed').forEach((button) => button.classList.remove('is-pressed'));
+    }
+    this.syncAmmoPanelButton();
+    this.syncFullscreenButton();
+    window.requestAnimationFrame(() => this.game?.scale.refresh());
   };
 
   private shellMarkup(): string {
@@ -98,7 +132,7 @@ export class GameApp {
               </div>
               <div class="home-link-row">
                 <button class="subtle-button" data-action="records">🏆 나의 기록</button>
-                <button class="subtle-button" data-action="instructions">🖱 조작 방법</button>
+                <button class="subtle-button" data-action="instructions">🎮 조작 방법</button>
                 <button class="subtle-button" id="menu-export-button" data-action="menu-export">▣ 코드 만들기</button>
               </div>
             </div>
@@ -118,6 +152,11 @@ export class GameApp {
                 <div class="metric"><small>최고 점수</small><b id="hud-best">0</b></div>
                 <div class="metric wave-metric"><small>웨이브</small><b id="hud-wave">준비 중</b></div>
                 <div class="metric"><small>포인트</small><b id="hud-resources">🍅 0</b></div>
+              </div>
+              <div class="game-screen-actions" aria-label="화면 설정">
+                <button class="screen-mode-button" data-action="rotate-screen" aria-label="가로 화면으로 전환" title="가로 화면으로 전환">↻</button>
+                <button class="screen-mode-button" data-action="toggle-fullscreen" aria-label="전체 화면" title="전체 화면">⛶</button>
+                <button class="screen-mode-button ammo-panel-toggle" data-action="toggle-ammo-panel" aria-label="탄환 선택 열기" aria-expanded="false" title="탄환 선택">🪨</button>
               </div>
               <button class="pause-button" data-action="pause" aria-label="일시정지">Ⅱ</button>
             </div>
@@ -149,7 +188,7 @@ export class GameApp {
               <div class="desktop-hint">마우스 왼쪽 버튼을 누른 채 움직이면 이동하며 가장 가까운 적에게 자동 조준·발사해요 · <kbd>ESC</kbd> 일시정지</div>
               <div class="farm-status-line"><span id="wave-phase-label">침입자를 막아 주세요!</span><span id="player-level-label">Lv.1 · 공격 속도 +0%</span><span id="pet-count-label">펫 0/3</span><span id="kills-label">처치 0</span></div>
             </div>
-            <div class="pointer-guide" aria-label="모바일 게임 조작">화면을 누른 채 움직이면 효린이가 따라가며 가장 가까운 적을 자동 공격해요.</div>
+            <div class="pointer-guide" aria-label="모바일 게임 조작"><span class="portrait-touch-guide">세로 화면: 방향 패드로 이동하고 공격 버튼을 눌러 자동 공격해요.</span><span class="landscape-touch-guide">가로 화면: 게임 화면을 누른 채 끌어 이동·자동 공격해요. 탄환은 오른쪽에서 골라요.</span></div>
           </section>
         </main>
         <footer class="site-footer"><span>효린이의 농장 지키기</span><span>이어서 하기 코드는 가진 사람만 복원할 수 있어요.</span></footer>
@@ -166,7 +205,10 @@ export class GameApp {
       if (target.dataset.upgrade) this.buyUpgrade(target.dataset.upgrade as UpgradeKey);
       if (target.dataset.copy === 'all') void this.copyCode();
       if (target.dataset.copy === 'chunk') void this.copyChunk(Number(target.dataset.index));
-      if (target.dataset.ammo && isAmmoType(target.dataset.ammo) && this.currentView === 'game') this.scene.selectAmmo(target.dataset.ammo);
+      if (target.dataset.ammo && isAmmoType(target.dataset.ammo) && this.currentView === 'game') {
+        this.scene.selectAmmo(target.dataset.ammo);
+        if (this.root.classList.contains('compact-landscape')) this.setAmmoPanelOpen(false);
+      }
       if (target.dataset.pet && isPetType(target.dataset.pet)) this.buyPet(target.dataset.pet);
     });
     const touchDirections = this.root.querySelectorAll<HTMLButtonElement>('[data-touch]');
@@ -210,6 +252,7 @@ export class GameApp {
     }
     this.root.addEventListener('keydown', (event) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a' && event.target instanceof HTMLTextAreaElement) event.target.select();
+      if (event.key === 'Escape' && this.root.classList.contains('compact-landscape')) this.setAmmoPanelOpen(false);
     });
     this.root.addEventListener('input', (event) => {
       const slider = event.target instanceof HTMLInputElement ? event.target : null;
@@ -228,6 +271,9 @@ export class GameApp {
       case 'new-game': this.startGame(); break;
       case 'continue': this.continueGame(); break;
       case 'pause': if (this.currentView === 'game') this.scene.pauseRun(); break;
+      case 'rotate-screen': void this.rotateScreen(); break;
+      case 'toggle-fullscreen': void this.changeFullscreen(); break;
+      case 'toggle-ammo-panel': this.setAmmoPanelOpen(!this.root.querySelector<HTMLElement>('#game-view')?.classList.contains('ammo-panel-open')); break;
       case 'resume': this.modalRoot().hidden = true; this.scene.resumeRun(); this.showView('game'); this.audio.startMusic(); break;
       case 'continue-wave': this.modalRoot().hidden = true; this.scene.continueFromRest(); this.showView('game'); this.audio.startMusic(); break;
       case 'menu': this.confirmMainMenu(); break;
@@ -254,6 +300,46 @@ export class GameApp {
       case 'repair': this.repair(); break;
       case 'buy-boulder': this.buyBoulder(); break;
     }
+  }
+
+  private async rotateScreen(): Promise<void> {
+    const result = await requestLandscapeLock(window.screen.orientation);
+    if (result === 'success') this.showToast('가로 화면 전환을 요청했어요.');
+    else if (result === 'unsupported') this.showToast('이 브라우저는 회전 잠금을 지원하지 않아요. 기기를 직접 가로로 돌려 주세요.');
+    else this.showToast('브라우저가 회전을 허용하지 않았어요. 전체 화면을 누르거나 기기를 직접 돌려 주세요.');
+  }
+
+  private async changeFullscreen(): Promise<void> {
+    const result = await toggleFullscreen(this.root);
+    if (result === 'unsupported') this.showToast('이 브라우저에서는 전체 화면을 사용할 수 없어요.');
+    else if (result === 'failed') this.showToast('전체 화면 요청이 차단됐어요. 브라우저 메뉴를 확인해 주세요.');
+  }
+
+  private setAmmoPanelOpen(open: boolean): void {
+    const gameView = this.root.querySelector<HTMLElement>('#game-view');
+    if (!gameView) return;
+    gameView.classList.toggle('ammo-panel-open', open && this.root.classList.contains('compact-landscape'));
+    this.syncAmmoPanelButton();
+    window.requestAnimationFrame(() => this.game?.scale.refresh());
+  }
+
+  private syncAmmoPanelButton(): void {
+    const gameView = this.root.querySelector<HTMLElement>('#game-view');
+    const button = this.root.querySelector<HTMLButtonElement>('.ammo-panel-toggle');
+    if (!gameView || !button) return;
+    const open = gameView.classList.contains('ammo-panel-open');
+    button.setAttribute('aria-expanded', String(open));
+    button.setAttribute('aria-label', open ? '탄환 선택 닫기' : '탄환 선택 열기');
+    button.title = open ? '탄환 선택 닫기' : '탄환 선택 열기';
+  }
+
+  private syncFullscreenButton(): void {
+    const button = this.root.querySelector<HTMLButtonElement>('[data-action="toggle-fullscreen"]');
+    if (!button) return;
+    const active = document.fullscreenElement === this.root;
+    button.textContent = active ? '⤢' : '⛶';
+    button.setAttribute('aria-label', active ? '전체 화면 종료' : '전체 화면');
+    button.title = active ? '전체 화면 종료' : '전체 화면';
   }
 
   private handleSceneReady(): void {
@@ -615,7 +701,7 @@ export class GameApp {
 
   private showInstructions(): void {
     this.modalReturn = this.currentView;
-    this.showModal(`<section class="modal-card instructions-card" role="dialog" aria-modal="true" aria-labelledby="instructions-title"><span class="modal-kicker">플레이 안내</span><h2 id="instructions-title">효린이와 농장 지키기</h2><div class="instruction-list"><div><span>01</span><b>누르고 끌어 이동·공격</b><p>마우스 왼쪽 버튼을 누른 채 움직이면 효린이가 포인터를 따라가며 가장 가까운 적에게 선택한 탄환을 자동 조준해 쏴요. 탄환은 적을 따라가서 맞히기 쉬워요. 모바일은 화면을 누르고 끌어 주세요.</p></div><div><span>02</span><b>탄환과 돌 공격</b><p>BB탄은 빠르고 약해요. 강철 BB탄은 더 빠르고 조금 강하며, 돌맹이는 맞은 적을 밀쳐내요. 큰 돌은 가까운 적을 그로기 상태로 만들어요. 바위 강타는 정비 시간에 포인트로 구매하면 자동으로 범위 기절 공격을 해요.</p></div><div><span>03</span><b>레벨·펫과 정비</b><p>적을 처치해 경험치를 모으면 레벨마다 공격 속도가 1% 빨라져요. 정비 시간에 누니·양이·마루를 포인트로 구매하면 농장을 순찰하며 침입자를 자동 공격해요. 웨이브를 넘으면 효린이 체력과 전투 상태가 회복돼요.</p></div><div><span>04</span><b>저장 코드는 직접 보관</b><p>일시정지 메뉴에서 간편 이어하기 코드나 전체 백업을 만들 수 있어요. 코드는 서버에 저장되지 않아요.</p></div></div><div class="modal-actions"><button class="primary-button" data-action="close-modal">알겠어요</button></div></section>`);
+    this.showModal(`<section class="modal-card instructions-card" role="dialog" aria-modal="true" aria-labelledby="instructions-title"><span class="modal-kicker">플레이 안내</span><h2 id="instructions-title">효린이와 농장 지키기</h2><div class="instruction-list"><div><span>01</span><b>이동·공격</b><p>PC에서는 마우스 왼쪽 버튼을 누른 채 움직이면 효린이가 따라가며 가장 가까운 적을 자동 조준해요. 스마트폰 세로 화면에서는 방향 패드로 이동하고 공격 버튼으로 공격해요. 가로 화면에서는 게임 화면을 누른 채 끌어 이동·자동 공격해요. 회전이 안 되면 기기를 직접 돌려 주세요.</p></div><div><span>02</span><b>탄환과 돌 공격</b><p>BB탄은 빠르고 약해요. 강철 BB탄은 더 빠르고 조금 강하며, 돌맹이는 맞은 적을 밀쳐내요. 큰 돌은 가까운 적을 그로기 상태로 만들어요. 바위 강타는 정비 시간에 포인트로 구매하면 자동으로 범위 기절 공격을 해요.</p></div><div><span>03</span><b>레벨·펫과 정비</b><p>적을 처치해 경험치를 모으면 레벨마다 공격 속도가 1% 빨라져요. 정비 시간에 누니·양이·마루를 포인트로 구매하면 농장을 순찰하며 침입자를 자동 공격해요. 웨이브를 넘으면 효린이 체력과 전투 상태가 회복돼요.</p></div><div><span>04</span><b>저장 코드는 직접 보관</b><p>일시정지 메뉴에서 간편 이어하기 코드나 전체 백업을 만들 수 있어요. 코드는 서버에 저장되지 않아요.</p></div></div><div class="modal-actions"><button class="primary-button" data-action="close-modal">알겠어요</button></div></section>`);
     this.focusModal();
   }
 
