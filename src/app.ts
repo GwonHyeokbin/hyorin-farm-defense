@@ -136,6 +136,15 @@ export class GameApp {
               <div class="boss-health" id="boss-health" hidden><span>👑 왕멧돼지</span><div class="health-track"><i id="boss-health-bar"></i></div></div>
               <div class="game-overwash" id="game-overwash" hidden></div>
             </div>
+            <div class="mobile-controls" aria-label="모바일 게임 조작">
+              <div class="dpad" role="group" aria-label="효린이 이동">
+                <button type="button" data-touch="up" aria-label="위로 이동">▲</button>
+                <button type="button" data-touch="left" aria-label="왼쪽으로 이동">◀</button>
+                <button type="button" data-touch="down" aria-label="아래로 이동">▼</button>
+                <button type="button" data-touch="right" aria-label="오른쪽으로 이동">▶</button>
+              </div>
+              <button class="attack-pad" type="button" data-touch-attack aria-label="누르고 있으면 가장 가까운 적 공격"><span aria-hidden="true">🪨</span><b>공격 유지</b></button>
+            </div>
             <div class="game-footer">
               <div class="desktop-hint">마우스 왼쪽 버튼을 누른 채 움직이면 이동하며 가장 가까운 적에게 자동 조준·발사해요 · <kbd>ESC</kbd> 일시정지</div>
               <div class="farm-status-line"><span id="wave-phase-label">침입자를 막아 주세요!</span><span id="player-level-label">Lv.1 · 공격 속도 +0%</span><span id="pet-count-label">펫 0/3</span><span id="kills-label">처치 0</span></div>
@@ -160,6 +169,45 @@ export class GameApp {
       if (target.dataset.ammo && isAmmoType(target.dataset.ammo) && this.currentView === 'game') this.scene.selectAmmo(target.dataset.ammo);
       if (target.dataset.pet && isPetType(target.dataset.pet)) this.buyPet(target.dataset.pet);
     });
+    const touchDirections = this.root.querySelectorAll<HTMLButtonElement>('[data-touch]');
+    touchDirections.forEach((button) => {
+      const direction = button.dataset.touch as 'up' | 'down' | 'left' | 'right';
+      const release = (): void => {
+        this.scene.setTouchDirection(direction, false);
+        button.classList.remove('is-pressed');
+      };
+      button.addEventListener('pointerdown', (event) => {
+        if (event.pointerType === 'mouse' && event.button !== 0) return;
+        event.preventDefault();
+        event.stopPropagation();
+        this.scene.setTouchDirection(direction, true);
+        button.classList.add('is-pressed');
+        try { button.setPointerCapture(event.pointerId); } catch { /* Pointer capture is optional on older browsers. */ }
+      });
+      button.addEventListener('pointerup', release);
+      button.addEventListener('pointercancel', release);
+      button.addEventListener('lostpointercapture', release);
+      button.addEventListener('contextmenu', (event) => event.preventDefault());
+    });
+    const attackButton = this.root.querySelector<HTMLButtonElement>('[data-touch-attack]');
+    if (attackButton) {
+      const release = (): void => {
+        this.scene.setTouchAttack(false);
+        attackButton.classList.remove('is-pressed');
+      };
+      attackButton.addEventListener('pointerdown', (event) => {
+        if (event.pointerType === 'mouse' && event.button !== 0) return;
+        event.preventDefault();
+        event.stopPropagation();
+        this.scene.setTouchAttack(true);
+        attackButton.classList.add('is-pressed');
+        try { attackButton.setPointerCapture(event.pointerId); } catch { /* Pointer capture is optional on older browsers. */ }
+      });
+      attackButton.addEventListener('pointerup', release);
+      attackButton.addEventListener('pointercancel', release);
+      attackButton.addEventListener('lostpointercapture', release);
+      attackButton.addEventListener('contextmenu', (event) => event.preventDefault());
+    }
     this.root.addEventListener('keydown', (event) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a' && event.target instanceof HTMLTextAreaElement) event.target.select();
     });

@@ -38,6 +38,8 @@ export class FarmScene extends Phaser.Scene {
   private pointerAttack = false;
   private pointerX = 512;
   private pointerY = 500;
+  private readonly touchDirections = new Set<'up' | 'down' | 'left' | 'right'>();
+  private touchAttack = false;
   private meleeEffectTimer = 0;
   private meleeEffectKind: 'stone' | 'boulder' | null = null;
   private hudTimer = 0;
@@ -99,7 +101,7 @@ export class FarmScene extends Phaser.Scene {
     this.clearWorldSprites();
     this.state = snapshot ? structuredClone(snapshot) : createGameState();
     this.paused = false;
-    this.pointerAttack = false;
+    this.clearPointerAndTouchControls();
     this.ended = false;
     this.hudTimer = 0;
     this.autosaveTimer = 0;
@@ -116,14 +118,30 @@ export class FarmScene extends Phaser.Scene {
 
   pauseRun(): GameState {
     this.paused = true;
-    this.pointerAttack = false;
+    this.clearPointerAndTouchControls();
     const state = this.snapshot();
     this.callbacks.onPause(state);
     return state;
   }
 
   resumeRun(): void {
+    this.clearPointerAndTouchControls();
     this.paused = false;
+  }
+
+  setTouchDirection(direction: 'up' | 'down' | 'left' | 'right', active: boolean): void {
+    if (active) this.touchDirections.add(direction);
+    else this.touchDirections.delete(direction);
+  }
+
+  setTouchAttack(active: boolean): void {
+    this.touchAttack = active;
+  }
+
+  private clearPointerAndTouchControls(): void {
+    this.pointerAttack = false;
+    this.touchAttack = false;
+    this.touchDirections.clear();
   }
 
   selectAmmo(ammo: AmmoType): void {
@@ -172,7 +190,11 @@ export class FarmScene extends Phaser.Scene {
 
   private controls(): Controls {
     return {
-      attack: this.pointerAttack,
+      up: this.touchDirections.has('up'),
+      down: this.touchDirections.has('down'),
+      left: this.touchDirections.has('left'),
+      right: this.touchDirections.has('right'),
+      attack: this.pointerAttack || this.touchAttack,
       ...(this.pointerAttack ? { moveToX: this.pointerX, moveToY: this.pointerY } : {}),
     };
   }
@@ -198,7 +220,7 @@ export class FarmScene extends Phaser.Scene {
       this.callbacks.onEvent(event, this.snapshot());
       if (event.type === 'wave-clear') {
         this.paused = true;
-        this.pointerAttack = false;
+        this.clearPointerAndTouchControls();
         this.lastAutosaveWave = this.state.wave;
         this.callbacks.onAutosave(this.snapshot());
       }
