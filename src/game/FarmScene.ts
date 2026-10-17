@@ -4,7 +4,7 @@ import { applyUpgrade, repairFarm, unlockBoulder } from './upgrades';
 import type { AmmoType, Controls, EngineEvent, GameState, PetType } from './types';
 import { purchasePet } from './pets';
 import { normalizeAmmoCounts, refillAmmo } from './ammo';
-import { growthStageForHealth } from './growth';
+import { growthStageForHealth, hyorinAnimationFrameCount } from './growth';
 
 export interface FarmSceneCallbacks {
   onSnapshot: (state: GameState) => void;
@@ -60,7 +60,7 @@ export class FarmScene extends Phaser.Scene {
   preload(): void {
     const root = import.meta.env.BASE_URL + 'art/';
     this.load.svg('farm-background', root + 'farm.svg', { width: WORLD.width, height: WORLD.height });
-    for (let stage = 1; stage <= 4; stage += 1) {
+    for (const stage of [1, 2, 3, 4] as const) {
       for (const animation of ['idle', 'move', 'attack', 'hit'] as const) {
         this.load.spritesheet(`hyorin-stage-${stage}-${animation}`, `${root}hyorin/stage-${stage}-${animation}.png`, { frameWidth: 64, frameHeight: 68 });
       }
@@ -83,14 +83,16 @@ export class FarmScene extends Phaser.Scene {
 
   create(): void {
     this.add.image(WORLD.width / 2, WORLD.height / 2, 'farm-background').setDisplaySize(WORLD.width, WORLD.height).setDepth(0);
-    for (let stage = 1; stage <= 4; stage += 1) {
+    for (const stage of [1, 2, 3, 4] as const) {
       for (const animation of ['idle', 'move', 'attack', 'hit'] as const) {
         const key = `hyorin-stage-${stage}-${animation}`;
-        const frameCount = animation === 'hit' || (stage === 1 && animation === 'attack') ? 4 : 5;
+        // The adult reference sheets contain unrelated poses rather than a clean animation cycle.
+        // Holding the first frame prevents the adult model from flickering between broken silhouettes.
+        const frameCount = hyorinAnimationFrameCount(stage, animation);
         this.anims.create({
           key,
           frames: this.anims.generateFrameNumbers(key, { start: 0, end: frameCount - 1 }),
-          frameRate: animation === 'idle' ? 6 : animation === 'hit' ? 10 : 11,
+          frameRate: stage === 4 ? 1 : animation === 'idle' ? 6 : animation === 'hit' ? 10 : 11,
           repeat: animation === 'hit' ? 0 : -1,
         });
       }
@@ -312,7 +314,8 @@ export class FarmScene extends Phaser.Scene {
       this.playerAnimationKey = animationKey;
       this.playerSprite.play(animationKey);
     }
-    this.playerSprite.setPosition(state.player.x, state.player.y + (this.moving ? Math.sin(time * 17) * 2.4 : Math.sin(time * 2.3) * 1.1));
+    const bodyBob = stage === 4 ? 0 : this.moving ? Math.sin(time * 17) * 2.4 : Math.sin(time * 2.3) * 1.1;
+    this.playerSprite.setPosition(state.player.x, state.player.y + bodyBob);
     this.playerSprite.setDisplaySize(...stageSize[stage]);
     this.playerSprite.setDepth(state.player.y + 20);
     this.playerSprite.setFlipX(state.player.facingX < -0.15);

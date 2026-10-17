@@ -1,4 +1,5 @@
 export type GrowthStage = 1 | 2 | 3 | 4;
+export type HyorinAnimation = 'idle' | 'move' | 'attack' | 'hit';
 
 export const GROWTH_STAGES: Record<GrowthStage, { label: string; spriteName: string }> = {
   1: { label: '아기 효린', spriteName: '아기' },
@@ -14,4 +15,10 @@ export function growthStageForHealth(hp: number, maxHp: number): GrowthStage {
   if (ratio <= 0.5) return 2;
   if (ratio <= 0.75) return 3;
   return 4;
+}
+
+/** The adult reference sheets contain separate poses, not animation cycles. */
+export function hyorinAnimationFrameCount(stage: GrowthStage, animation: HyorinAnimation): number {
+  if (stage === 4) return 1;
+  return animation === 'hit' || (stage === 1 && animation === 'attack') ? 4 : 5;
 }

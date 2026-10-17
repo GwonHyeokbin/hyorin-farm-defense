@@ -1,9 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { createAmmoCounts, refillAmmo } from './ammo';
 import { createGameState, stepWorld } from './engine';
-import { growthStageForHealth } from './growth';
+import { growthStageForHealth, hyorinAnimationFrameCount } from './growth';
 
 describe('ammo stock and age display', () => {
+  it('keeps adult poses static because the adult sheets are pose collections, not animation cycles', () => {
+    for (const animation of ['idle', 'move', 'attack', 'hit'] as const) {
+      expect(hyorinAnimationFrameCount(4, animation)).toBe(1);
+    }
+    expect(hyorinAnimationFrameCount(3, 'move')).toBe(5);
+    expect(hyorinAnimationFrameCount(1, 'attack')).toBe(4);
+  });
+
   it('starts with the Defense 2 capacities and charges points to refill a partial stack', () => {
     const state = createGameState(5);
     expect(state.ammoCounts).toEqual(createAmmoCounts());
