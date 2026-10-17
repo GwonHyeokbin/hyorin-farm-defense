@@ -102,6 +102,7 @@ export interface GameState {
   experience: number;
   experienceToNext: number;
   ammo: AmmoType;
+  ammoCounts: Record<AmmoType, number>;
   boulderUnlocked: boolean;
   pets: FarmPetState[];
   player: PlayerState;
@@ -128,7 +129,7 @@ export interface Controls {
 }
 
 export interface EngineEvent {
-  type: 'fire' | 'hit' | 'melee' | 'boulder' | 'level-up' | 'knockback' | 'groggy' | 'stun' | 'kill' | 'farm-hit' | 'player-hit' | 'wave-start' | 'wave-clear' | 'game-over';
+  type: 'fire' | 'ammo-switch' | 'ammo-empty' | 'hit' | 'melee' | 'boulder' | 'level-up' | 'knockback' | 'groggy' | 'stun' | 'kill' | 'farm-hit' | 'player-hit' | 'wave-start' | 'wave-clear' | 'game-over';
   text?: string;
 }
 

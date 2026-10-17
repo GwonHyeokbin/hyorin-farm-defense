@@ -1,5 +1,5 @@
 import type { Controls, EnemyKind, EnemyState, EngineEvent, GameState } from './types';
-import { getAmmoDefinition } from './ammo';
+import { AMMO_DEFINITIONS, createAmmoCounts, getAmmoDefinition } from './ammo';
 import { getPetDefinition, PET_PATROLS } from './pets';
 
 export const WORLD = { width: 1024, height: 640 } as const;
@@ -42,6 +42,7 @@ export function createGameState(seed = Date.now() >>> 0): GameState {
     experience: 0,
     experienceToNext: 100,
     ammo: 'bb',
+    ammoCounts: createAmmoCounts(),
     boulderUnlocked: false,
     pets: [],
     player: { x: 512, y: 500, hp: 100, maxHp: 100, attackCooldown: 0, meleeCooldown: 0, boulderCooldown: 0, invulnerable: 0, facingX: 0, facingY: -1 },
@@ -150,15 +151,30 @@ function getNearestEnemy(state: GameState, x: number, y: number): { enemy: Enemy
   return nearest;
 }
 
-function spawnProjectile(state: GameState): boolean {
+function nextAmmoWithStock(state: GameState, after: GameState['ammo']): GameState['ammo'] | null {
+  const start = AMMO_DEFINITIONS.findIndex((definition) => definition.type === after);
+  for (let offset = 1; offset <= AMMO_DEFINITIONS.length; offset += 1) {
+    const type = AMMO_DEFINITIONS[(start + offset) % AMMO_DEFINITIONS.length].type;
+    if (state.ammoCounts[type] > 0) return type;
+  }
+  return null;
+}
+
+function spawnProjectile(state: GameState): GameState['ammo'] | null {
   const { player } = state;
+  if (state.ammoCounts[state.ammo] <= 0) {
+    const available = nextAmmoWithStock(state, state.ammo);
+    if (!available) return null;
+    state.ammo = available;
+  }
+  const ammoType = state.ammo;
   const nearest = getNearestEnemy(state, player.x, player.y);
-  if (!nearest || nearest.distance > 900) return false;
+  if (!nearest || nearest.distance > 900) return null;
   const target = nearest.enemy;
   const dx = target.x - player.x;
   const dy = target.y - player.y;
   const length = Math.hypot(dx, dy) || 1;
-  const ammo = getAmmoDefinition(state.ammo);
+  const ammo = getAmmoDefinition(ammoType);
   const damage = ammo.damage * (1 + state.upgrades.power * 0.12);
   state.projectiles.push({
     x: player.x + dx / length * 16,
@@ -167,12 +183,17 @@ function spawnProjectile(state: GameState): boolean {
     vy: dy / length * ammo.speed,
     damage,
     life: 1.6,
-    ammo: state.ammo,
+    ammo: ammoType,
     targetId: target.id,
   });
+  state.ammoCounts[ammoType] = Math.max(0, state.ammoCounts[ammoType] - 1);
+  if (state.ammoCounts[ammoType] === 0) {
+    const available = nextAmmoWithStock(state, ammoType);
+    if (available) state.ammo = available;
+  }
   player.facingX = dx / length;
   player.facingY = dy / length;
-  return true;
+  return ammoType;
 }
 
 function increaseExperience(state: GameState, amount: number, events: EngineEvent[]): void {
@@ -447,8 +468,14 @@ export function stepWorld(state: GameState, rawDt: number, controls: Controls = 
   }
 
   if (controls.attack && state.player.attackCooldown <= 0) {
-    if (spawnProjectile(state)) {
+    const firedAmmo = spawnProjectile(state);
+    if (firedAmmo) {
       events.push({ type: 'fire' });
+      if (state.ammo !== firedAmmo) {
+        events.push({ type: 'ammo-switch', text: `${getAmmoDefinition(firedAmmo).name}을 다 써서 ${getAmmoDefinition(state.ammo).name}(으)로 바꿨어요.` });
+      } else if (AMMO_DEFINITIONS.every(({ type }) => state.ammoCounts[type] === 0)) {
+        events.push({ type: 'ammo-empty', text: '탄환을 모두 썼어요. 정비 시간에 포인트로 보충해 주세요.' });
+      }
       const rate = (1 + (state.level - 1) * 0.01) * (1 + state.upgrades.rapid * 0.08);
       state.player.attackCooldown = 0.48 / rate;
     }

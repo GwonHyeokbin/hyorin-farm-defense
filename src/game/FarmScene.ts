@@ -3,6 +3,8 @@ import { CROP_TARGETS, createGameState, stepWorld, WORLD } from './engine';
 import { applyUpgrade, repairFarm, unlockBoulder } from './upgrades';
 import type { AmmoType, Controls, EngineEvent, GameState, PetType } from './types';
 import { purchasePet } from './pets';
+import { normalizeAmmoCounts, refillAmmo } from './ammo';
+import { growthStageForHealth } from './growth';
 
 export interface FarmSceneCallbacks {
   onSnapshot: (state: GameState) => void;
@@ -26,7 +28,8 @@ export class FarmScene extends Phaser.Scene {
   private state: GameState | null = null;
   private paused = true;
   private pauseKey?: Phaser.Input.Keyboard.Key;
-  private playerSprite?: Phaser.GameObjects.Image;
+  private playerSprite?: Phaser.GameObjects.Sprite;
+  private playerAnimationKey = '';
   private slingshotSprite?: Phaser.GameObjects.Image;
   private stoneSprite?: Phaser.GameObjects.Image;
   private readonly enemySprites = new Map<number, Phaser.GameObjects.Image>();
@@ -41,6 +44,7 @@ export class FarmScene extends Phaser.Scene {
   private readonly touchDirections = new Set<'up' | 'down' | 'left' | 'right'>();
   private touchAttack = false;
   private meleeEffectTimer = 0;
+  private playerHitTimer = 0;
   private meleeEffectKind: 'stone' | 'boulder' | null = null;
   private hudTimer = 0;
   private autosaveTimer = 0;
@@ -56,7 +60,11 @@ export class FarmScene extends Phaser.Scene {
   preload(): void {
     const root = import.meta.env.BASE_URL + 'art/';
     this.load.svg('farm-background', root + 'farm.svg', { width: WORLD.width, height: WORLD.height });
-    this.load.image('hyorin', root + 'hyorin-2d.png');
+    for (let stage = 1; stage <= 4; stage += 1) {
+      for (const animation of ['idle', 'move', 'attack', 'hit'] as const) {
+        this.load.spritesheet(`hyorin-stage-${stage}-${animation}`, `${root}hyorin/stage-${stage}-${animation}.png`, { frameWidth: 64, frameHeight: 68 });
+      }
+    }
     this.load.image('pet-nuni', root + 'pet-nuni.png');
     this.load.image('pet-yangi', root + 'pet-yangi.png');
     this.load.image('pet-maru', root + 'pet-maru.png');
@@ -75,7 +83,21 @@ export class FarmScene extends Phaser.Scene {
 
   create(): void {
     this.add.image(WORLD.width / 2, WORLD.height / 2, 'farm-background').setDisplaySize(WORLD.width, WORLD.height).setDepth(0);
-    this.playerSprite = this.add.image(512, 500, 'hyorin').setDisplaySize(80, 120).setOrigin(0.5, 0.75).setDepth(500);
+    for (let stage = 1; stage <= 4; stage += 1) {
+      for (const animation of ['idle', 'move', 'attack', 'hit'] as const) {
+        const key = `hyorin-stage-${stage}-${animation}`;
+        const frameCount = animation === 'hit' || (stage === 1 && animation === 'attack') ? 4 : 5;
+        this.anims.create({
+          key,
+          frames: this.anims.generateFrameNumbers(key, { start: 0, end: frameCount - 1 }),
+          frameRate: animation === 'idle' ? 6 : animation === 'hit' ? 10 : 11,
+          repeat: animation === 'hit' ? 0 : -1,
+        });
+      }
+    }
+    this.playerSprite = this.add.sprite(512, 500, 'hyorin-stage-4-idle').setDisplaySize(68, 72).setOrigin(0.5, 1).setDepth(500);
+    this.playerSprite.play('hyorin-stage-4-idle');
+    this.playerAnimationKey = 'hyorin-stage-4-idle';
     this.slingshotSprite = this.add.image(538, 532, 'slingshot').setDisplaySize(24, 32).setDepth(530);
     this.stoneSprite = this.add.image(512, 500, 'large-stone').setDisplaySize(28, 28).setVisible(false).setDepth(560);
     this.bars = this.add.graphics().setDepth(900);
@@ -102,10 +124,13 @@ export class FarmScene extends Phaser.Scene {
   startRun(snapshot?: GameState): GameState {
     this.clearWorldSprites();
     this.state = snapshot ? structuredClone(snapshot) : createGameState();
+    this.state.ammoCounts = normalizeAmmoCounts(this.state.ammoCounts);
+    this.playerAnimationKey = '';
     this.paused = false;
     this.clearPointerAndTouchControls();
     this.ended = false;
     this.hudTimer = 0;
+    this.playerHitTimer = 0;
     this.autosaveTimer = 0;
     this.lastAutosaveWave = this.state.wave;
     this.renderState();
@@ -151,10 +176,17 @@ export class FarmScene extends Phaser.Scene {
   }
 
   selectAmmo(ammo: AmmoType): void {
-    if (!this.state || this.state.ammo === ammo) return;
+    if (!this.state || this.state.ammo === ammo || this.state.ammoCounts[ammo] <= 0) return;
     this.state.ammo = ammo;
     this.publishSnapshot();
     this.callbacks.onAutosave(this.snapshot());
+  }
+
+  purchaseAmmo(type: AmmoType): boolean {
+    if (!this.state || this.state.waveState.phase !== 'rest' || !refillAmmo(this.state, type)) return false;
+    this.publishSnapshot();
+    this.callbacks.onAutosave(this.snapshot());
+    return true;
   }
 
   continueFromRest(): void {
@@ -216,11 +248,14 @@ export class FarmScene extends Phaser.Scene {
     if (deltaMs > 220) return;
     const dt = Math.min(deltaMs / 1000, 0.05);
     const controls = this.controls();
-    this.moving = Boolean(controls.moveToX !== undefined && Math.hypot(controls.moveToX - this.state.player.x, controls.moveToY! - this.state.player.y) > 8);
+    this.moving = Boolean(controls.up || controls.down || controls.left || controls.right
+      || (controls.moveToX !== undefined && Math.hypot(controls.moveToX - this.state.player.x, controls.moveToY! - this.state.player.y) > 8));
+    this.playerHitTimer = Math.max(0, this.playerHitTimer - dt);
     this.meleeEffectTimer = Math.max(0, this.meleeEffectTimer - dt);
     const events = stepWorld(this.state, dt, controls);
     this.renderState();
     for (const event of events) {
+      if (event.type === 'player-hit') this.playerHitTimer = 0.42;
       if (event.type === 'melee') { this.meleeEffectTimer = 0.28; this.meleeEffectKind = 'stone'; }
       if (event.type === 'boulder') { this.meleeEffectTimer = 0.48; this.meleeEffectKind = 'boulder'; }
       this.callbacks.onEvent(event, this.snapshot());
@@ -269,14 +304,25 @@ export class FarmScene extends Phaser.Scene {
     if (!this.state || !this.playerSprite) return;
     const state = this.state;
     const time = this.time.now / 1000;
+    const stage = growthStageForHealth(state.player.hp, state.player.maxHp);
+    const animation = this.playerHitTimer > 0 ? 'hit' : this.moving ? 'move' : state.player.attackCooldown > 0.25 ? 'attack' : 'idle';
+    const animationKey = `hyorin-stage-${stage}-${animation}`;
+    const stageSize: Record<number, [number, number]> = { 1: [48, 52], 2: [56, 60], 3: [62, 66], 4: [68, 72] };
+    if (this.playerAnimationKey !== animationKey) {
+      this.playerAnimationKey = animationKey;
+      this.playerSprite.play(animationKey);
+    }
     this.playerSprite.setPosition(state.player.x, state.player.y + (this.moving ? Math.sin(time * 17) * 2.4 : Math.sin(time * 2.3) * 1.1));
+    this.playerSprite.setDisplaySize(...stageSize[stage]);
     this.playerSprite.setDepth(state.player.y + 20);
-    this.playerSprite.setRotation(Math.max(-0.07, Math.min(0.07, state.player.facingX * 0.05)));
+    this.playerSprite.setFlipX(state.player.facingX < -0.15);
     this.playerSprite.setAlpha(state.player.invulnerable > 0 && Math.floor(time * 16) % 2 === 0 ? 0.48 : 1);
     const aimAngle = Math.atan2(state.player.facingY, state.player.facingX);
-    this.slingshotSprite?.setPosition(state.player.x + 31, state.player.y - 20)
+    this.slingshotSprite?.setVisible(animation !== 'attack')
+      .setPosition(state.player.x + (state.player.facingX < -0.15 ? -20 : 20), state.player.y - 27)
       .setDisplaySize(20, 27)
       .setRotation(aimAngle + Math.PI / 2)
+      .setFlipX(state.player.facingX < -0.15)
       .setDepth(state.player.y + 28);
     if (this.stoneSprite) {
       const active = this.meleeEffectTimer > 0;

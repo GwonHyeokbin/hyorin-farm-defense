@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createGameState, restoreSafeCheckpoint, stepWorld } from './engine';
-import { createSaveCode, restoreSaveCode, SaveCodeError } from './save-code';
+import { createSaveCode, normalizeGameState, restoreSaveCode, SaveCodeError } from './save-code';
 import { clearAutosave, clearRecords, highestScore, loadAutosave, loadRecords, saveAutosave, saveRecord } from './storage';
 import type { EnemyState, ProjectileState } from './types';
 import { zlibSync } from 'fflate';
@@ -41,6 +41,7 @@ function detailedState() {
   state.player.hp = 67;
   state.player.maxHp = 120;
   state.player.attackCooldown = 0.21;
+  state.ammoCounts = { bb: 17, steelBb: 4, stone: 2 };
   state.upgrades.power = 3;
   state.upgrades.armor = 2;
   state.farm.health = 74;
@@ -67,6 +68,12 @@ describe('offline continue codes', () => {
     const index = Math.min(12, code.length - 1);
     const replacement = code[index] === '0' ? '1' : '0';
     await expect(restoreSaveCode(code.slice(0, index) + replacement + code.slice(index + 1))).rejects.toThrow(SaveCodeError);
+  });
+
+  it('restores full starting ammo for autosaves made before ammo limits were added', () => {
+    const oldSnapshot = { ...createGameState(17) } as Record<string, unknown>;
+    delete oldSnapshot.ammoCounts;
+    expect(normalizeGameState(oldSnapshot)?.ammoCounts).toEqual({ bb: 30, steelBb: 10, stone: 3 });
   });
 
   it('rejects malformed input and unsupported format versions before applying state', async () => {
@@ -183,5 +190,20 @@ describe('farm defense loop', () => {
     state.player.y = 255;
     for (let tick = 0; tick < 40; tick += 1) stepWorld(state, 0.05, { up: true });
     expect(Math.hypot(state.player.x - 190, state.player.y - 172)).toBeGreaterThanOrEqual(65.9);
+  });
+
+  it('consumes one round per shot and automatically selects the next loaded ammo', () => {
+    const state = createGameState(19);
+    state.waveState = { phase: 'defend', total: 1, spawned: 1, spawnTimer: 0, phaseTimer: 0, elapsed: 0 };
+    state.enemies = [{ id: 1, kind: 'boar', x: 710, y: 500, hp: 1000, maxHp: 1000, speed: 0, targetIndex: 0, mood: 'seek', moodTimer: 100, attackCooldown: 100, contactCooldown: 100, hitFlash: 0 }];
+    state.ammoCounts = { bb: 1, steelBb: 5, stone: 0 };
+    state.player.attackCooldown = 0;
+
+    const events = stepWorld(state, 0.05, { attack: true });
+
+    expect(events.some((event) => event.type === 'fire')).toBe(true);
+    expect(state.projectiles[0]?.ammo).toBe('bb');
+    expect(state.ammoCounts.bb).toBe(0);
+    expect(state.ammo).toBe('steelBb');
   });
 });

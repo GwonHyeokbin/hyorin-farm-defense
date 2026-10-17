@@ -1,6 +1,6 @@
 import { zlibSync } from 'fflate';
 import type { GameState } from './types';
-import { isAmmoType } from './ammo';
+import { AMMO_DEFINITIONS, isAmmoType, normalizeAmmoCounts } from './ammo';
 import { isPetType } from './pets';
 
 const CODE_PREFIX = 'HFD1';
@@ -117,6 +117,13 @@ export function isValidGameState(value: unknown): value is GameState {
   if (value.experience !== undefined && !finite(value.experience, 0, 100_000_000)) return false;
   if (value.experienceToNext !== undefined && !finite(value.experienceToNext, 1, 100_000_000)) return false;
   if (value.ammo !== undefined && !isAmmoType(value.ammo)) return false;
+  if (value.ammoCounts !== undefined) {
+    if (!isRecord(value.ammoCounts)) return false;
+    for (const { type, capacity } of AMMO_DEFINITIONS) {
+      const count = value.ammoCounts[type];
+      if (!finite(count, 0, capacity) || !Number.isInteger(count)) return false;
+    }
+  }
   if (value.boulderUnlocked !== undefined && typeof value.boulderUnlocked !== 'boolean') return false;
   if (!isRecord(value.upgrades)) return false;
   for (const key of ['power', 'speed', 'rapid', 'armor', 'vitality', 'fence']) {
@@ -175,6 +182,7 @@ export function normalizeGameState(value: unknown): GameState | null {
   state.experienceToNext = finite(state.experienceToNext, 1, 100_000_000) ? state.experienceToNext : state.level * 100;
   if (state.experience >= state.experienceToNext) state.experience = state.experienceToNext - 1;
   state.ammo = isAmmoType(state.ammo) ? state.ammo : 'bb';
+  state.ammoCounts = normalizeAmmoCounts(isRecord(state.ammoCounts) ? state.ammoCounts : undefined);
   state.boulderUnlocked = state.boulderUnlocked === true;
   state.pets = Array.isArray(state.pets) ? state.pets : [];
   state.player.meleeCooldown = finite(state.player.meleeCooldown, 0, 100) ? state.player.meleeCooldown : 0;

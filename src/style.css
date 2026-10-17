@@ -96,9 +96,10 @@ h1 em { color: #598462; font-style: normal; }
 .ammo-toolbar { min-height: 48px; display: flex; align-items: center; gap: 7px; padding: 0 6px 10px; }
 .ammo-toolbar-title { flex: 0 0 auto; color: #74816f; font-size: 10px; font-weight: 900; }
 .ammo-button { min-width: 132px; display: grid; grid-template-columns: 24px 1fr; align-items: center; gap: 0 6px; border: 1px solid #e5dfce; border-radius: 10px; padding: 5px 8px; background: #fffdf6; color: #516c50; cursor: pointer; text-align: left; }
-.ammo-button > span { grid-row: 1 / 3; font-size: 16px; text-align: center; }
+.ammo-button > span { grid-row: 1 / 4; font-size: 16px; text-align: center; }
 .ammo-button > b { font-size: 10px; }
 .ammo-button > small { margin-top: 1px; color: #919687; font-size: 8px; }
+.ammo-count { color: #63774f !important; font-weight: 900; font-variant-numeric: tabular-nums; }
 .ammo-button.is-selected { border-color: #8faf7e; background: #edf3e4; box-shadow: inset 0 0 0 1px rgb(143 175 126 / 18%); }
 .secondary-attacks { margin-left: auto; color: #7c8175; font-size: 9px; white-space: nowrap; }
 .secondary-attacks b { color: #86654a; }
@@ -106,6 +107,12 @@ h1 em { color: #598462; font-style: normal; }
 .phaser-container { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; }
 .phaser-container canvas { display: block; max-width: 100%; max-height: 100%; touch-action: none; }
 .stage-top-hud { position: absolute; top: 12px; left: 13px; right: 13px; z-index: 4; display: flex; justify-content: space-between; pointer-events: none; }
+.growth-pill { width: min(260px, 46%); min-height: 37px; display: flex; align-items: center; gap: 7px; padding: 6px 9px; border: 1px solid rgb(255 255 246 / 75%); border-radius: 12px; background: rgb(255 251 239 / 91%); box-shadow: 0 3px 12px rgb(42 59 40 / 10%); }
+.growth-pill > span { flex: 0 0 auto; color: #536f52; font-size: 10px; font-weight: 850; }
+.growth-pill > b { color: #687565; font-size: 9px; white-space: nowrap; }
+.growth-stage-meter { flex: 1; min-width: 28px; display: flex; gap: 2px; }
+.growth-stage-meter i { height: 7px; flex: 1; border-radius: 8px; background: #e3e2d4; }
+.growth-pill[data-stage="1"] .growth-stage-meter i:nth-child(-n+1), .growth-pill[data-stage="2"] .growth-stage-meter i:nth-child(-n+2), .growth-pill[data-stage="3"] .growth-stage-meter i:nth-child(-n+3), .growth-pill[data-stage="4"] .growth-stage-meter i:nth-child(-n+4) { background: linear-gradient(90deg, #78a96f, #97bf75); }
 .health-pill { width: min(240px, 39%); min-height: 37px; display: flex; align-items: center; gap: 8px; padding: 6px 9px; border: 1px solid rgb(255 255 246 / 75%); border-radius: 12px; background: rgb(255 251 239 / 91%); box-shadow: 0 3px 12px rgb(42 59 40 / 10%); }
 .health-pill > span { flex: 0 0 auto; color: #536f52; font-size: 10px; font-weight: 850; }
 .health-pill > b { min-width: 35px; color: #687565; font-size: 9px; text-align: right; }
@@ -204,6 +211,15 @@ kbd { padding: 3px 5px; border: 1px solid #ded8c7; border-radius: 5px; backgroun
 .pet-card-copy b { color: #425d47; font-size: 10px; }
 .pet-card-copy small { color: #899184; font-size: 8px; line-height: 1.35; }
 .pet-card > strong { color: #a46e43; font-size: 8px; line-height: 1.3; }
+.ammo-shop { margin-top: 13px; padding-top: 10px; border-top: 1px solid #ece5d5; }
+.ammo-refill-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-top: 7px; }
+.ammo-refill-card { min-width: 0; min-height: 54px; display: flex; align-items: center; gap: 6px; border: 1px solid #e4e5d5; border-radius: 10px; padding: 6px; background: #fffdf5; cursor: pointer; text-align: left; }
+.ammo-refill-card:hover:not(:disabled) { border-color: #a8c39c; background: #fbfff4; }
+.ammo-refill-icon { flex: 0 0 21px; font-size: 15px; text-align: center; }
+.ammo-refill-copy { min-width: 0; flex: 1; display: grid; gap: 2px; }
+.ammo-refill-copy b { overflow: hidden; color: #425d47; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+.ammo-refill-copy small { color: #899184; font-size: 7px; }
+.ammo-refill-card > strong { flex: 0 0 auto; color: #a46e43; font-size: 8px; }
 .upgrade-icon { flex: 0 0 31px; width: 31px; height: 31px; display: grid; place-items: center; border-radius: 10px; background: #eef2df; font-size: 16px; }
 .upgrade-copy { min-width: 0; flex: 1; }
 .upgrade-copy b { display: flex; align-items: center; justify-content: space-between; gap: 3px; font-size: 10px; }
@@ -281,9 +297,16 @@ kbd { padding: 3px 5px; border: 1px solid #ded8c7; border-radius: 5px; backgroun
   .ammo-button > span { font-size: 14px; }
   .ammo-button > b { font-size: 9px; }
   .ammo-button > small { font-size: 8px; line-height: 1.2; }
+  .ammo-button > .ammo-description { display: none; }
+  .ammo-button > .ammo-count { display: block; font-size: 8px; }
   .secondary-attacks { grid-column: 1 / -1; margin: 1px 0 0; white-space: normal; line-height: 1.4; text-align: center; }
   .game-stage { width: 100%; max-width: 100%; height: auto; border-width: 3px; border-radius: 13px; }
   .stage-top-hud { top: 7px; left: 7px; right: 7px; }
+  .growth-pill { width: min(52%, 260px); min-width: 0; min-height: 34px; gap: 4px; padding: 4px 6px; border-radius: 9px; }
+  .growth-pill > span { font-size: 8px; }
+  .growth-pill > b { font-size: 8px; }
+  .growth-stage-meter { min-width: 20px; gap: 1px; }
+  .growth-stage-meter i { height: 6px; }
   .health-pill { width: 48%; min-width: 0; min-height: 34px; gap: 5px; padding: 4px 6px; border-radius: 9px; }
   .health-pill > span { font-size: 9px; }
   .health-pill > b { min-width: 0; font-size: 8px; white-space: nowrap; }
@@ -342,6 +365,8 @@ kbd { padding: 3px 5px; border: 1px solid #ded8c7; border-radius: 5px; backgroun
 #app.touch-device .ammo-button { min-width: 0; min-height: 48px; grid-template-columns: 19px minmax(0, 1fr); gap: 0 4px; padding: 5px; }
 #app.touch-device .ammo-button > b { font-size: 9px; }
 #app.touch-device .ammo-button > small { font-size: 8px; line-height: 1.2; }
+#app.touch-device .ammo-button > .ammo-description { display: none; }
+#app.touch-device .ammo-button > .ammo-count { display: block; font-size: 8px; }
 #app.touch-device .secondary-attacks { grid-column: 1 / -1; margin: 1px 0 0; white-space: normal; line-height: 1.4; text-align: center; }
 #app.touch-device .pointer-guide { display: block; padding: 4px 6px 7px; color: #788475; font-size: 9px; line-height: 1.4; text-align: center; }
 #app.touch-device .portrait-touch-guide { display: inline; }
@@ -372,6 +397,10 @@ kbd { padding: 3px 5px; border: 1px solid #ded8c7; border-radius: 5px; backgroun
 #app.touch-landscape .pause-button { flex: 0 0 34px; width: 34px; height: 34px; min-height: 34px; border-radius: 9px; }
 #app.touch-landscape .game-stage { position: fixed; z-index: 1; top: calc(50% + 23px); left: calc((100vw - 124px) / 2); width: min(calc(100vw - 136px - env(safe-area-inset-left) - env(safe-area-inset-right)), calc((100dvh - 48px) * 1.58)); max-width: none; height: auto; aspect-ratio: 1024 / 640; margin: 0; border-width: 3px; border-radius: 11px; transform: translate(-50%, -50%); touch-action: none; }
 #app.touch-landscape .stage-top-hud { top: 5px; left: 6px; right: 6px; }
+#app.touch-landscape .growth-pill { width: min(200px, 45%); min-height: 27px; gap: 4px; padding: 3px 5px; border-radius: 8px; }
+#app.touch-landscape .growth-pill > span, #app.touch-landscape .growth-pill > b { font-size: 7px; }
+#app.touch-landscape .growth-stage-meter { min-width: 17px; gap: 1px; }
+#app.touch-landscape .growth-stage-meter i { height: 5px; }
 #app.touch-landscape .health-pill { min-height: 27px; gap: 4px; padding: 3px 5px; border-radius: 8px; }
 #app.touch-landscape .health-pill > span { font-size: 8px; }
 #app.touch-landscape .health-pill > b { font-size: 7px; }
@@ -382,6 +411,7 @@ kbd { padding: 3px 5px; border: 1px solid #ded8c7; border-radius: 5px; backgroun
 #app.touch-landscape .ammo-button > span { font-size: 13px; }
 #app.touch-landscape .ammo-button > b { font-size: 8px; }
 #app.touch-landscape .ammo-button > small, #app.touch-landscape .secondary-attacks, #app.touch-landscape .game-footer { display: none; }
+#app.touch-landscape .ammo-button > .ammo-count { display: block; margin-top: 2px; font-size: 7px; }
 #app.touch-landscape .mobile-controls { position: fixed; z-index: 5; right: auto; bottom: max(7px, env(safe-area-inset-bottom)); left: max(8px, env(safe-area-inset-left)); width: auto; min-height: 0; margin: 0; padding: 0; display: flex; pointer-events: none; }
 #app.touch-landscape .dpad { display: none !important; }
 #app.touch-landscape .attack-pad { flex: 0 0 62px; width: 62px; height: 62px; min-height: 62px; opacity: .78; pointer-events: auto; }

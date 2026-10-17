@@ -8,6 +8,7 @@ import { clearAutosave, clearRecords, getSettings, highestScore, loadAutosave, l
 import type { GameSettings } from './game/storage';
 import { BOULDER_UPGRADE_COST, UPGRADE_DEFINITIONS, upgradeCost } from './game/upgrades';
 import { AMMO_DEFINITIONS, isAmmoType } from './game/ammo';
+import { GROWTH_STAGES, growthStageForHealth } from './game/growth';
 import { PET_DEFINITIONS, isPetType } from './game/pets';
 import { requestLandscapeLock, shouldCollapseLandscapeAmmoPanel, shouldUseTouchLayout, toggleFullscreen } from './game/mobile-layout';
 import type { EngineEvent, GameState, PetType, UpgradeKey } from './game/types';
@@ -162,13 +163,13 @@ export class GameApp {
             </div>
             <div class="ammo-toolbar" role="group" aria-label="새총 탄환 선택">
               <span class="ammo-toolbar-title">새총</span>
-              ${AMMO_DEFINITIONS.map((ammo, index) => `<button class="ammo-button${index === 0 ? ' is-selected' : ''}" data-ammo="${ammo.type}" aria-pressed="${index === 0}"><span>${ammo.icon}</span><b>${ammo.name}</b><small>${ammo.description}</small></button>`).join('')}
+              ${AMMO_DEFINITIONS.map((ammo, index) => `<button class="ammo-button${index === 0 ? ' is-selected' : ''}" data-ammo="${ammo.type}" aria-pressed="${index === 0}"><span>${ammo.icon}</span><b>${ammo.name}</b><small class="ammo-description">${ammo.description}</small><small class="ammo-count" data-ammo-count="${ammo.type}">${ammo.capacity}/${ammo.capacity}</small></button>`).join('')}
               <span class="secondary-attacks"><b>큰 돌</b> 근접 그로기 <span>·</span> <b>바위 강타</b> <span id="boulder-status">정비 시간에 포인트로 구매</span></span>
             </div>
             <div class="game-stage">
               <div id="phaser-container" class="phaser-container" aria-label="효린이의 농장 게임 화면"></div>
               <div class="stage-top-hud">
-                <div class="health-pill"><span>💚 효린</span><div class="health-track"><i id="player-health-bar"></i></div><b id="player-health-text">100 / 100</b></div>
+                <div class="growth-pill" id="player-growth-pill" data-stage="4" aria-label="효린이 성장 모습"><span>💚 효린이</span><b id="player-stage-text">성인 효린</b><div class="growth-stage-meter" aria-hidden="true"><i></i><i></i><i></i><i></i></div></div>
                 <div class="health-pill farm-health-pill"><span>🏡 농장</span><div class="health-track"><i id="farm-health-bar"></i></div><b id="farm-health-text">100%</b></div>
               </div>
               <div class="wave-banner" id="wave-banner" aria-live="polite"></div>
@@ -198,7 +199,7 @@ export class GameApp {
 
   private bindEvents(): void {
     this.root.addEventListener('click', (event) => {
-      const target = event.target instanceof Element ? event.target.closest<HTMLElement>('[data-action], [data-upgrade], [data-copy], [data-ammo], [data-pet]') : null;
+      const target = event.target instanceof Element ? event.target.closest<HTMLElement>('[data-action], [data-upgrade], [data-copy], [data-ammo], [data-pet], [data-refill-ammo]') : null;
       if (!target) return;
       const action = target.dataset.action;
       if (action) this.handleAction(action);
@@ -209,6 +210,7 @@ export class GameApp {
         this.scene.selectAmmo(target.dataset.ammo);
         if (this.root.classList.contains('compact-landscape')) this.setAmmoPanelOpen(false);
       }
+      if (target.dataset.refillAmmo && isAmmoType(target.dataset.refillAmmo)) this.refillAmmo(target.dataset.refillAmmo);
       if (target.dataset.pet && isPetType(target.dataset.pet)) this.buyPet(target.dataset.pet);
     });
     const touchDirections = this.root.querySelectorAll<HTMLButtonElement>('[data-touch]');
@@ -426,14 +428,23 @@ export class GameApp {
     this.setText('#pet-count-label', `펫 ${state.pets.length}/3`);
     this.root.querySelectorAll<HTMLButtonElement>('[data-ammo]').forEach((button) => {
       const selected = button.dataset.ammo === state.ammo;
+      const type = button.dataset.ammo;
+      const definition = AMMO_DEFINITIONS.find((ammo) => ammo.type === type);
+      const count = type && isAmmoType(type) ? state.ammoCounts[type] : 0;
       button.classList.toggle('is-selected', selected);
       button.setAttribute('aria-pressed', String(selected));
+      button.disabled = count <= 0;
+      if (type && isAmmoType(type) && definition) {
+        const countLabel = button.querySelector<HTMLElement>('[data-ammo-count]');
+        if (countLabel) countLabel.textContent = `${count}/${definition.capacity}`;
+      }
     });
-    const playerRatio = Math.max(0, Math.min(100, state.player.hp / state.player.maxHp * 100));
+    const growthStage = growthStageForHealth(state.player.hp, state.player.maxHp);
     const farmRatio = Math.max(0, Math.min(100, state.farm.health / state.farm.maxHealth * 100));
-    this.setStyle('#player-health-bar', 'width', `${playerRatio}%`);
+    const growthPill = this.root.querySelector<HTMLElement>('#player-growth-pill');
+    growthPill?.setAttribute('data-stage', String(growthStage));
+    this.setText('#player-stage-text', GROWTH_STAGES[growthStage].label);
     this.setStyle('#farm-health-bar', 'width', `${farmRatio}%`);
-    this.setText('#player-health-text', `${Math.ceil(state.player.hp)} / ${state.player.maxHp}`);
     this.setText('#farm-health-text', `${Math.ceil(farmRatio)}%`);
     this.setText('#kills-label', `처치 ${state.stats.kills}`);
     this.setText('#wave-phase-label', state.waveState.phase === 'rest' ? `정비 시간 · 다음 웨이브 준비` : `침입자를 막아 주세요! · ${state.waveState.spawned}/${state.waveState.total}`);
@@ -466,6 +477,7 @@ export class GameApp {
         break;
     }
     if (event.type === 'level-up') this.showToast(event.text ?? `레벨 ${state.level} 상승! 공격 속도 +1%`);
+    if (event.type === 'ammo-switch' || event.type === 'ammo-empty') this.showToast(event.text ?? '탄환 수량을 확인해 주세요.');
     if (event.type === 'boulder') this.showToast('바위 강타! 주변 침입자가 기절했어요.');
     if (event.type === 'wave-start') this.showToast(event.text ?? `제${state.wave}웨이브 시작!`);
     if (event.type === 'wave-clear') {
@@ -530,12 +542,21 @@ export class GameApp {
         <img src="${image}" alt="" /><span class="pet-card-copy"><b>${pet.name}</b><small>${pet.description}</small></span><strong>${owned ? '함께 지키는 중' : `🍅 ${pet.price} 포인트`}</strong>
       </button>`;
     }).join('');
+    const ammoCards = AMMO_DEFINITIONS.map((ammo) => {
+      const count = state.ammoCounts[ammo.type];
+      const full = count >= ammo.capacity;
+      const disabled = full || state.resources < ammo.refillCost;
+      return `<button class="ammo-refill-card" data-refill-ammo="${ammo.type}" ${disabled ? 'disabled' : ''}>
+        <span class="ammo-refill-icon">${ammo.icon}</span><span class="ammo-refill-copy"><b>${ammo.name}</b><small>${count}/${ammo.capacity}발 보유</small></span><strong>${full ? '가득 참' : `🍅 ${ammo.refillCost}`}</strong>
+      </button>`;
+    }).join('');
     const modal = this.modalRoot();
     modal.hidden = false;
     modal.innerHTML = `<section class="modal-card intermission-card" role="dialog" aria-modal="true" aria-labelledby="intermission-title">
-      <div class="rest-stamp">정비 시간</div><span class="modal-kicker">제${state.wave}웨이브 방어 성공</span><h2 id="intermission-title">농장을 정비해요</h2><p class="modal-copy">효린이의 체력과 전투 상태가 완전히 회복됐어요. 다음 침입에 대비해 장비를 강화해 주세요.</p>
+      <div class="rest-stamp">정비 시간</div><span class="modal-kicker">제${state.wave}웨이브 방어 성공</span><h2 id="intermission-title">농장을 정비해요</h2><p class="modal-copy">효린이는 성인 모습으로 회복됐어요. 다음 침입에 대비해 장비와 탄약을 준비해 주세요.</p>
       <div class="intermission-summary"><span>이번 웨이브 보상</span><b>+${12 + Math.min(20, state.wave * 2)} 🍅</b><span class="resource-total">보유 포인트 <strong>🍅 ${state.resources}</strong></span></div>
       <div class="upgrade-grid">${cards}${boulderButton}</div>
+      <div class="ammo-shop"><div class="pet-shop-heading"><b>새총 탄약 보충</b><small>다 쓴 탄약은 포인트로 다시 채워요.</small></div><div class="ammo-refill-grid">${ammoCards}</div></div>
       <div class="pet-shop"><div class="pet-shop-heading"><b>농장 수호 펫</b><small>구매한 고양이는 순찰하며 침입자를 공격해요.</small></div><div class="pet-shop-grid">${petCards}</div></div>
       <div class="intermission-bottom"><button class="repair-button" data-action="repair" ${state.resources < 20 || state.farm.health >= state.farm.maxHealth ? 'disabled' : ''}>🪵 농장 수리 <small>🍅 20</small></button><button class="primary-button" data-action="continue-wave">다음 웨이브 <span>→</span></button></div>
       <button class="text-button" data-action="export-quick">이어하기 코드 만들기</button>
@@ -550,6 +571,10 @@ export class GameApp {
 
   private repair(): void {
     if (this.currentView === 'intermission' && this.scene.repairRun()) this.renderIntermission();
+  }
+
+  private refillAmmo(type: import('./game/types').AmmoType): void {
+    if (this.currentView === 'intermission' && this.scene.purchaseAmmo(type)) this.renderIntermission();
   }
 
   private buyBoulder(): void {
